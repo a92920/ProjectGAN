@@ -1,0 +1,6 @@
+.DS_Store
+.ipynb_checkpoints/
+paris_eval.nosync/
+paris_train_original.nosync/
+paris_eval/
+paris_train_original/
