@@ -1,5 +1,28 @@
-from torch import nn
+from torch import nn, optim
+from torch.nn.modules.linear import Linear
 from torchsummary import summary
+import torch
+from start import *
+import matplotlib.pyplot as plt
+import numpy as np
+from tqdm import tqdm
+
+"""
+Variables:  
+            - image input cropped size (227/256/128)
+            - image cover size (multiple covers in v2)
+            - reshape 
+            - cover 
+            
+Hyper Parameters: 
+            - epochs
+            - batch size
+            - learning rate 
+            - AdamOptimizer
+            - autoencoder loss
+            - adversarial loss 
+"""
+
 
 # def weights_init(m):
 #     classname = m.__class__.__name__
@@ -10,118 +33,203 @@ from torchsummary import summary
 #         nn.init.constant_(m.bias.data, 0)
 
 
-class Generator(nn.Module):
-    def __init__(self, ngpu):
-        super(Generator, self).__init__()
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # input is Z, going into a convolution
-            nn.ConvTranspose2d( nz, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d( ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d( ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
 
-            # state size. (ngf*2) x 32 x 32
-            # nn.ConvTranspose2d( ngf, ngf, 4, 2, 1, bias=False),
-            # nn.BatchNorm2d(ngf),
-            # nn.ReLU(True),
-            # state size. (ngf) x 64 x 64
-            nn.ConvTranspose2d( ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-            # state size. (nc) x 128 x 128
+class autoencoder(nn.Module):
+    def __init__(self, ngpu=0):
+        super(autoencoder, self).__init__()
+        self.ngpu = ngpu
+        self.encoder_decoder = nn.Sequential(
+            #Encoder
+            
+            nn.Conv2d(3,64, kernel_size=(4,4),stride=(2,2),padding=(1,1) ),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(64,64, kernel_size=(4,4),stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(64,128, kernel_size=(4,4),stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(128,256, kernel_size=4,stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(256,512, kernel_size=4,stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(512,4000, kernel_size=4,stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(4000),
+            nn.LeakyReLU(0.2,inplace=True),
+
+            #Decoder
+
+            nn.ConvTranspose2d(4000, 512, kernel_size = (4,4), stride=(2,2), padding = (1,1) ),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.ConvTranspose2d(512, 256, kernel_size = (4,4), stride=(2,2), padding = (1,1) ),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.ConvTranspose2d(256, 128, kernel_size = (4,4), stride=(2,2), padding = (1,1) ),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.ConvTranspose2d(128, 64, kernel_size = (4,4), stride=(2,2), padding = (1,1) ),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.ConvTranspose2d(64, 3, kernel_size = (4,4), stride=(2,2), padding = (1,1) ),
+            nn.BatchNorm2d(3),
+            nn.LeakyReLU(0.2,inplace=True),
         )
-
     def forward(self, input):
-        return self.main(input)
-
-class Discriminator(nn.Module):
-    def __init__(self, ngpu):
-        super(Discriminator, self).__init__()
+        #already must be converted to 128x128x3
+        output = self.encoder_decoder(input)
+        #print(output.shape)
+        return output
+    
+class Adversarial_Discriminator(nn.Module):
+    def __init__(self, ngpu=0):
+        super(Adversarial_Discriminator, self).__init__()
         self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # input is (nc) x 64 x 64
-            nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf) x 32 x 32
-            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*2) x 16 x 16
-            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*4) x 8 x 8
-            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
+        self.discriminator = nn.Sequential(
+            nn.Conv2d(3,64, kernel_size=(4,4),stride=(2,2),padding=(1,1) ),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(64,128, kernel_size=(4,4),stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(128,256, kernel_size=4,stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(256,512, kernel_size=4, stride=(2,2), padding=(1,1) ),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2,inplace=True),
+            nn.Conv2d(512,1, kernel_size=4 ),
             nn.Sigmoid()
         )
-
     def forward(self, input):
-        return self.main(input)
+        output = self.discriminator(input)
+        return output
+
+
 
 import torch.nn as nn
 
 
-class AlexNet(nn.Module):
-    def __init__(self, num_classes=1000):
-        super(AlexNet, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(64, 192, kernel_size=5, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(192, 384, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(384, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Flatten()
-        )
 
-    def forward(self, x):
-        x = self.features(x)
-        return x
 
-class training():
-    def __init__(self, encoder, decoder):
-        self.encoder = encoder
-        self.decoder = decoder
+class train_context_encoder():
+    def __init__(self, encoder_decoder,discriminator, train_data):
+        self.encoder_decoder = encoder_decoder
+        self.train_data = train_data
+        self.discriminator = discriminator
 
-    def fit(self,  training_data_loader):
-        pass
+    def fit(self,loss_fn_autoe, loss_fn_discriminator, optimizerAe,optimizerD, n_epochs=10, eval_data = None):
+        autoe_losses = []
+        D_losses = []
+        encoder_decoder = self.encoder_decoder
+        netD = self.discriminator
 
+        real_label = 1
+        fake_label = 0
+        for epoch in range(1,int(n_epochs)+1):
+            with tqdm(self.train_data, unit='batch') as tepoch:
+                for data in tepoch:
+                    tepoch.set_description(f"Epoch {epoch}")
+                    
+                    images = data["image"]
+                    images = torch.reshape(images,(images.shape[0],3,128,128))
+                    images = images.type(torch.FloatTensor)
+
+                    cropped_original_image = data["corrupt_image_center"].type(torch.FloatTensor)
+                    cropped_original_image = torch.reshape(cropped_original_image,(cropped_original_image.shape[0],3,64,64))
+                    cropped_original_image = cropped_original_image / 255
+
+
+                    ############################
+                    # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+                    ###########################
+
+                    ## Train with all-real batch
+                    netD.zero_grad()
+                    # Forward pass real batch through D
+                    output = netD(cropped_original_image).view(-1)
+                    # Calculate loss on all-real batch
+
+                    label = torch.full((cropped_original_image.shape[0],), real_label, dtype=torch.float)
+
+                    errD_real = loss_fn_discriminator(output, label)
+                    # Calculate gradients for D in backward pass
+                    errD_real.backward()
+                    D_x = output.mean().item()
+
+                    ## Train with all-fake batch
+                    
+                    # Generate fake image batch with G
+                    fake = encoder_decoder(images)
+                    label.fill_(fake_label)
+                    # Classify all fake batch with D
+                    output = netD(fake.detach()).view(-1)
+                    # Calculate D's loss on the all-fake batch
+                    errD_fake = loss_fn_discriminator(output, label)
+                    # Calculate the gradients for this batch, accumulated (summed) with previous gradients
+                    errD_fake.backward()
+                    D_G_z1 = output.mean().item()
+                    # Compute error of D as sum over the fake and the real batches
+                    errD = errD_real + errD_fake
+                    # Update D
+                    optimizerD.step()
+
+                    ############################
+                    # (2) Update G network: maximize log(D(G(z)))
+                    ###########################
+                    
+                    encoder_decoder.zero_grad()
+                    label.fill_(real_label)  # fake labels are real for generator cost
+                    # Since we just updated D, perform another forward pass of all-fake batch through D
+                    output = netD(fake).view(-1)
+                    # Calculate G's loss based on this output
+                    errG = loss_fn_autoe(output, label)
+                    # Calculate gradients for G
+                    errG.backward()
+                    loss_ae = output.mean().item()
+                    # Update G
+                    optimizerAe.step()
+
+
+                    # out = encoder_decoder(images)
+                    # out = torch.reshape(out, (out.shape[0],64,64,3))
+
+                    #plt.imshow(data["corrupt_image_center"][0].type(torch.FloatTensor)/255)
+                    #plt.show()
+
+
+                    
+                    # losses.append(loss.item())
+                    # loss.backward()
+                    # optimizer.step()
+                    # optimizer.zero_grad()
+                    tepoch.set_postfix(loss_discriminator = errD.item(), loss_ae = loss_ae)        
     
 if __name__ == "__main__":
-    # Number of channels in the training images. For color images this is 3
-    nc = 3
-    # Size of z latent vector (i.e. size of generator input)
-    nz = 4000
-    # Size of feature maps in generator
-    ngf = 227
-    # Size of feature maps in discriminator
-    ndf = 64
+
+    # Hparams
+    file_locs = {
+        "train": "paris_train_original.nosync",
+        "test": "paris_eval.nosync/paris_eval_gt",
+        "test_corr": "paris_eval.nosync/paris_eval_gt",
+    }
+    reshape = (128,128) #reshape image to size (m,n)
+    cover = (64,64) # size of white shaded area
+    batch_size = 16 
+    epochs = 40
+    learning_rate = 0.001
+
+    autoe = autoencoder()
+    discriminator = Adversarial_Discriminator()
+    train_images, test_images,test_images_corrupt  = get_imgs(file_locs,reshape) 
+    train_data_loader = create_data_loader(train_images, cover, batch_size = batch_size)
+
+    summary(autoe,(3,128,128))
+    summary(discriminator,(3,64,64))
+
+    trainer = train_context_encoder(autoe,discriminator,train_data_loader)
+    trainer.fit(nn.MSELoss(),nn.BCELoss(),optim.AdamW(autoe.parameters(),lr=learning_rate), optim.AdamW(discriminator.parameters(),lr=learning_rate),epochs)
     
-    # netg = AlexNet()
-    # summary(netg,(nc,ndf,ndf))
-    netd  = Discriminator(0)
-    summary(netd,(nc,ndf,ndf))
-    netg  = Generator(0)
-    summary(netg,(nz,1,1))
