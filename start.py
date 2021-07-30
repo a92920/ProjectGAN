@@ -15,7 +15,7 @@ def get_imgs(file_loc,reshape = (227,227)):
     
 def get_img_file(loc ,ext ,reshape = (227,227)):
     # !REMOVE [:100] TO GET ALL FILES
-    loc = glob.glob(f"{loc}/*.{ext}")[:1000]
+    loc = glob.glob(f"{loc}/*.{ext}")
     images = []
     for img_loc in loc:
         pil_img = Image.open(img_loc)
@@ -71,7 +71,7 @@ class ToFillDataset_train(Dataset):
     
     def __getitem__(self, item):
         image = self.images[item]
-        image = self.normalize(image)
+        #image = self.normalize(image)
         if type(self.corrupted_images) == int :
             corrupt_images, original_cropped = white_out_center(self.images[item],self.cover)
             
@@ -79,8 +79,11 @@ class ToFillDataset_train(Dataset):
             corrupt_images = self.corrupted_images[item]
             
         return {
+          # original image  
           'image': image,
+          # with center white
           'corrupt_image': corrupt_images,
+          # original image center cropped
           'corrupt_image_center': original_cropped,
         }
 

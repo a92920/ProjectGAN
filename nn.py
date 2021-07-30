@@ -2,11 +2,12 @@ from torch import nn, optim
 from torch.nn.modules.linear import Linear
 from torchsummary import summary
 import torch
+import torch.nn as nn
 from start import *
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
-
+from torch.utils.tensorboard import SummaryWriter
 """
 Variables:  
             - image input cropped size (227/256/128)
@@ -39,6 +40,7 @@ class autoencoder(nn.Module):
         super(autoencoder, self).__init__()
         self.ngpu = ngpu
         self.encoder_decoder = nn.Sequential(
+            
             #Encoder
             
             nn.Conv2d(3,64, kernel_size=(4,4),stride=(2,2),padding=(1,1) ),
@@ -77,11 +79,12 @@ class autoencoder(nn.Module):
             nn.ConvTranspose2d(64, 3, kernel_size = (4,4), stride=(2,2), padding = (1,1) ),
             nn.BatchNorm2d(3),
             nn.LeakyReLU(0.2,inplace=True),
+
         )
     def forward(self, input):
-        #already must be converted to 128x128x3
+        # must be converted to 128x128x3
         output = self.encoder_decoder(input)
-        #print(output.shape)
+
         return output
     
 class Adversarial_Discriminator(nn.Module):
@@ -110,8 +113,6 @@ class Adversarial_Discriminator(nn.Module):
 
 
 
-import torch.nn as nn
-
 
 
 
@@ -120,7 +121,8 @@ class train_context_encoder():
         self.encoder_decoder = encoder_decoder
         self.train_data = train_data
         self.discriminator = discriminator
-
+        self.writer = self.writer = SummaryWriter(comment="Context_Encoder_NN", max_queue=100000, )
+    
     def fit(self,loss_fn_autoe, loss_fn_discriminator, optimizerAe,optimizerD, n_epochs=10, eval_data = None):
         autoe_losses = []
         D_losses = []
@@ -133,14 +135,13 @@ class train_context_encoder():
             with tqdm(self.train_data, unit='batch') as tepoch:
                 for data in tepoch:
                     tepoch.set_description(f"Epoch {epoch}")
-                    
                     images = data["image"]
                     images = torch.reshape(images,(images.shape[0],3,128,128))
                     images = images.type(torch.FloatTensor)
 
                     cropped_original_image = data["corrupt_image_center"].type(torch.FloatTensor)
                     cropped_original_image = torch.reshape(cropped_original_image,(cropped_original_image.shape[0],3,64,64))
-                    cropped_original_image = cropped_original_image / 255
+                    cropped_original_image = cropped_original_image
 
 
                     ############################
@@ -180,7 +181,8 @@ class train_context_encoder():
                     ############################
                     # (2) Update G network: maximize log(D(G(z)))
                     ###########################
-                    
+                    # this part needs work
+
                     encoder_decoder.zero_grad()
                     label.fill_(real_label)  # fake labels are real for generator cost
                     # Since we just updated D, perform another forward pass of all-fake batch through D
@@ -193,24 +195,20 @@ class train_context_encoder():
                     # Update G
                     optimizerAe.step()
 
-
-                    # out = encoder_decoder(images)
-                    # out = torch.reshape(out, (out.shape[0],64,64,3))
-
-                    #plt.imshow(data["corrupt_image_center"][0].type(torch.FloatTensor)/255)
-                    #plt.show()
-
-
-                    
-                    # losses.append(loss.item())
-                    # loss.backward()
-                    # optimizer.step()
-                    # optimizer.zero_grad()
                     tepoch.set_postfix(loss_discriminator = errD.item(), loss_ae = loss_ae)        
-    
+    def eval(self,data_loader,loss_fn,n_examples):
+        losses = []
+        with torch.no_grad():
+            with tqdm(test_data_loader) as tepoch:
+                for d in tepoch:
+                    self.encoder_decoder(d["image"])
+
+
+
 if __name__ == "__main__":
 
     # Hparams
+    params = {}
     file_locs = {
         "train": "paris_train_original.nosync",
         "test": "paris_eval.nosync/paris_eval_gt",
@@ -219,7 +217,7 @@ if __name__ == "__main__":
     reshape = (128,128) #reshape image to size (m,n)
     cover = (64,64) # size of white shaded area
     batch_size = 16 
-    epochs = 40
+    epochs = 20
     learning_rate = 0.001
 
     autoe = autoencoder()
